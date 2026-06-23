@@ -187,6 +187,8 @@ class Brain:
             "options": {
                 "num_predict": max_tokens,
                 "temperature": temperature,
+                "repeat_penalty": 1.3,
+                "top_p": 0.9,
             },
         }
 
@@ -195,7 +197,7 @@ class Brain:
                 async with httpx.AsyncClient() as client:
                     resp = await client.post(
                         f"{self.ollama_url}/api/generate",
-                        json=payload, timeout=30
+                        json=payload, timeout=60
                     )
                     data = resp.json()
             else:
@@ -226,6 +228,8 @@ class Brain:
             "options": {
                 "num_predict": max_tokens,
                 "temperature": temperature,
+                "repeat_penalty": 1.3,
+                "top_p": 0.9,
             },
         }
 
@@ -234,19 +238,22 @@ class Brain:
                 async with httpx.AsyncClient() as client:
                     resp = await client.post(
                         f"{self.ollama_url}/api/chat",
-                        json=payload, timeout=30
+                        json=payload, timeout=60
                     )
                     data = resp.json()
             else:
                 data = await asyncio.to_thread(self._urllib_post,
                     f"{self.ollama_url}/api/chat", payload)
 
+            text = data.get("message", {}).get("content", "")
+            if not text.strip():
+                text = data.get("response", "")
             return BrainResponse(
-                text=data.get("message", {}).get("content", ""),
+                text=text,
                 tier=Tier.LOCAL,
                 model=self._local_model or "unknown",
             )
-        except Exception:
+        except Exception as e:
             if self._cloud_client:
                 return await self._cloud_chat(system, messages, max_tokens, temperature, cheap=True)
             return BrainResponse(text="", tier=Tier.LOCAL, model="failed")

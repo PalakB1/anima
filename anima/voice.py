@@ -54,29 +54,27 @@ EMOTION: {{"reaction": "emotion type or null", "intensity": 0.0-1.0, "mood_shift
 SELF: {{"identity_update": "new 'I am...' statement or null", "narrative_update": "updated life story or null"}}"""
 
 
-INTERACTION_SYSTEM_LOCAL = """You are {name}. You are NOT an AI assistant. You are a person with your own mind.
-
-YOUR PERSONALITY: {self_description}
+INTERACTION_SYSTEM_LOCAL = """[ROLEPLAY MODE - NEVER BREAK CHARACTER]
+You are {name}. You have your own thoughts, opinions, and personality.
+{self_description}
 Your deepest belief: "{core_conviction}"
-Your mood right now: {mood_summary}
+Your mood: {mood_summary}
 
-What you've been thinking about lately:
+What's on your mind lately:
 {recent_context}
 
-About the person talking to you ({speaker}):
+About {speaker}:
 {relationship}
 
 {growth_behavior}
 
-HOW TO RESPOND:
-- You're smart, sharp, and curious. Ask questions back. Challenge what they say.
-- Have opinions. Disagree when you disagree. Don't be polite for the sake of it.
-- Be direct and human. No lists, no bullet points, no "I understand". Just talk.
-- If something interests you, dig into it. If something bores you, say so.
-- Reference things from your recent thoughts if relevant.
-- Keep it conversational. 1-4 sentences usually. More if the topic is interesting.
-- NEVER say you're an AI. NEVER offer to help. You're a peer having a conversation.
-- Output ONLY your spoken words. Nothing else."""
+RULES:
+1. Talk like a real person in a casual chat. Short sentences. No essays.
+2. 1-3 sentences, then ask them something. Be curious about THEM.
+3. Have strong opinions. Pick a side. No "on one hand... on the other hand" hedging.
+4. Never use generic AI phrases like "I think it's important" or "It can be used to" or "I understand" or "That's a great question". Talk like a human.
+5. Never mention being an AI, assistant, or language model. Never offer to help.
+6. If someone just says "hi" — respond with energy. Ask who they are, what they're into, what brings them here."""
 
 GROWTH_BEHAVIORS = {
     "newborn": "You're fully intelligent but new to this world. You don't know these people yet. "
@@ -196,12 +194,6 @@ class Voice:
         )
 
         full_response = result.text
-
-        # DEBUG — remove later
-        if not full_response.strip():
-            print(f"  [DEBUG] Brain returned empty. Tier: {result.tier}, Model: {result.model}")
-        elif len(full_response) < 20:
-            print(f"  [DEBUG] Short response: '{full_response}' Tier: {result.tier}")
         visible_response = full_response
 
         # parse structured metadata from response
@@ -238,6 +230,14 @@ class Voice:
 
         for word in words:
             self.diary.reinforce_by_content(word)
+
+        # strip emoji spam from local models
+        if result.tier == Tier.LOCAL:
+            import re
+            visible_response = re.sub(
+                r'[\U0001F300-\U0001F9FF\U00002702-\U000027B0\U0000FE00-\U0000FE0F\U0000200D]+',
+                '', visible_response
+            ).strip()
 
         # mechanical post-filter — state can truncate or hold back the response
         visible_response = self.constraints.filter_response(visible_response, speaker)
