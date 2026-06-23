@@ -82,7 +82,8 @@ class Soul:
         if birth_data:
             (self.data_dir / "birth_data.json").write_text(json.dumps(birth_data, indent=2))
 
-        # --- Senses ---
+        # --- Birth time + Senses ---
+        self.born_at = self._load_birth_time()
         self.senses = Senses(self.born_at)
 
         # --- Subsystems (all use Brain, not raw API) ---
@@ -101,7 +102,6 @@ class Soul:
         self.absorber = AbsorptionEngine(self.diary, self.inner_world, self.budget, self.brain)
 
         # --- State ---
-        self.born_at = self._load_birth_time()
         self._thinking_task = None
         self._reflection_task = None
         self._emotion_task = None
