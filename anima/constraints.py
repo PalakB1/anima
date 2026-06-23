@@ -27,47 +27,43 @@ class BehaviorConstraints:
         return params
 
     def _calc_max_tokens(self, speaker: str | None) -> int:
-        """Emotional state mechanically limits/expands response length.
-        Anxious → shorter. Joyful → longer. Low trust → shorter.
-        This isn't a suggestion to the LLM — it's a hard cap."""
+        """Emotional state mechanically limits/expands response length."""
         base = 400
 
         # mood effects
         if self.emotions.mood_anxiety > 0.7:
-            base = int(base * 0.5)  # anxiety makes you terse
+            base = int(base * 0.7)
         if self.emotions.mood_joy > 0.7:
-            base = int(base * 1.3)  # joy opens you up
+            base = int(base * 1.3)
         if self.emotions.mood_anger > 0.7:
-            base = int(base * 0.6)  # anger → short, sharp
+            base = int(base * 0.7)
         if self.emotions.mood_sadness > 0.7:
-            base = int(base * 0.7)  # sadness → withdrawn
+            base = int(base * 0.8)
 
-        # growth stage effects
+        # growth affects style not capability — agent is smart from birth
+        # young agents are curious and ask more questions (need tokens for that)
         stage = self.emotions.growth_stage
-        if stage == "newborn":
-            base = min(base, 100)  # newborns can barely form sentences
-        elif stage == "infant":
-            base = min(base, 200)
+        if stage in ("newborn", "infant"):
+            base = max(base, 300)  # enough room to be curious and ask questions
         elif stage == "adolescent":
-            base = int(base * 1.2)  # adolescents won't shut up
+            base = int(base * 1.2)
 
         # relationship effects
         if speaker:
             for r in self.inner_world.relationships:
                 if r.name.lower() == speaker.lower():
                     if r.trust_level < 0.3:
-                        base = int(base * 0.5)  # low trust → guarded, short
+                        base = int(base * 0.6)
                     if r.vulnerability_level > 0.7:
-                        base = int(base * 1.3)  # high vulnerability → opens up
+                        base = int(base * 1.3)
                     if r.gut_feeling < -0.5:
-                        base = int(base * 0.4)  # repulsed → barely engaging
+                        base = int(base * 0.5)
                     break
 
-        return max(50, min(800, base))
+        return max(200, min(800, base))
 
     def _calc_temperature(self) -> float:
-        """Emotional state changes how predictable the agent is.
-        Calm → more measured (lower temp). Intense emotions → more erratic."""
+        """Emotional state changes how predictable the agent is."""
         base = 0.7
 
         intensity = max(
@@ -76,16 +72,12 @@ class BehaviorConstraints:
             self.emotions.mood_joy * 0.5,
         )
 
-        # high emotional intensity → less predictable
-        base += intensity * 0.3
+        base += intensity * 0.2
 
-        # growth stage
-        if self.emotions.growth_stage == "newborn":
-            base += 0.2  # newborns are erratic
-        elif self.emotions.growth_stage == "mature":
-            base -= 0.1  # mature beings are more measured
+        if self.emotions.growth_stage == "mature":
+            base -= 0.1
 
-        return max(0.3, min(1.0, base))
+        return max(0.4, min(0.9, base))
 
     def should_refuse_to_engage(self, speaker: str | None = None) -> str | None:
         """Sometimes the agent mechanically refuses to engage.
@@ -157,12 +149,5 @@ class BehaviorConstraints:
                         if len(sentences) > 3:
                             response = ". ".join(sentences[:3]) + "."
                     break
-
-        # growth stage filters
-        if self.emotions.growth_stage == "newborn":
-            # newborns can't produce complex responses
-            sentences = response.split(". ")
-            if len(sentences) > 2:
-                response = ". ".join(sentences[:2]) + "."
 
         return response
