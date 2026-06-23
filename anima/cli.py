@@ -178,6 +178,16 @@ async def run():
     soul.on_thought(print_thought)
     soul.on_reflection(print_reflection)
 
+    # check brain status before starting
+    brain = soul.brain
+    await brain._check_local()
+    if brain._local_available:
+        console.print(f"[green]Brain: LOCAL ({brain._local_model}) — free thinking[/green]")
+    elif brain._cloud_client:
+        console.print(f"[yellow]Brain: CLOUD only — no Ollama found[/yellow]")
+    else:
+        console.print(f"[red]Brain: NONE — install Ollama or set ANTHROPIC_API_KEY[/red]")
+
     await soul.wake_up()
     print_status(soul)
 

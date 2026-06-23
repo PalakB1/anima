@@ -182,11 +182,10 @@ class Voice:
         # get mechanically constrained generation parameters
         gen_params = self.constraints.get_generation_params(speaker)
 
-        # important conversations (high emotion, strong relationship) get cloud
+        # only escalate to cloud if cloud is actually available AND situation demands it
         is_important = (
-            self.emotions.mood_anxiety > 0.7 or
-            self.emotions.mood_anger > 0.7 or
-            self.thought_count < 5  # very early life — cloud for quality
+            self.brain._cloud_client is not None
+            and (self.emotions.mood_anxiety > 0.7 or self.emotions.mood_anger > 0.7)
         )
 
         result = await self.brain.speak(
@@ -197,6 +196,12 @@ class Voice:
         )
 
         full_response = result.text
+
+        # DEBUG — remove later
+        if not full_response.strip():
+            print(f"  [DEBUG] Brain returned empty. Tier: {result.tier}, Model: {result.model}")
+        elif len(full_response) < 20:
+            print(f"  [DEBUG] Short response: '{full_response}' Tier: {result.tier}")
         visible_response = full_response
 
         # parse structured metadata from response

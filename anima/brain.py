@@ -147,7 +147,9 @@ class Brain:
         """Generate a thought — prefers local, falls back to cloud cheap."""
         if await self._check_local():
             return await self._local_generate(system, prompt, max_tokens, temperature)
-        return await self._cloud_generate(system, prompt, max_tokens, temperature, cheap=True)
+        if self._cloud_client:
+            return await self._cloud_generate(system, prompt, max_tokens, temperature, cheap=True)
+        return BrainResponse(text="", tier=Tier.LOCAL, model="none")
 
     async def speak(self, system: str, messages: list[dict], max_tokens: int = 400,
                     temperature: float = 0.7, important: bool = False) -> BrainResponse:
@@ -157,13 +159,21 @@ class Brain:
             return await self._cloud_chat(system, messages, max_tokens, temperature, cheap=False)
         if await self._check_local():
             return await self._local_chat(system, messages, max_tokens, temperature)
-        return await self._cloud_chat(system, messages, max_tokens, temperature, cheap=True)
+        if self._cloud_client:
+            return await self._cloud_chat(system, messages, max_tokens, temperature, cheap=True)
+        # nothing available — retry local detection once
+        self._local_available = None
+        if await self._check_local():
+            return await self._local_chat(system, messages, max_tokens, temperature)
+        return BrainResponse(text="(no brain available — is Ollama running?)", tier=Tier.LOCAL, model="none")
 
     async def analyze(self, system: str, text: str, max_tokens: int = 600) -> BrainResponse:
         """Analyze text (for reflection, absorption). Prefers local."""
         if await self._check_local():
             return await self._local_generate(system, text, max_tokens, 0.3)
-        return await self._cloud_generate(system, text, max_tokens, 0.3, cheap=True)
+        if self._cloud_client:
+            return await self._cloud_generate(system, text, max_tokens, 0.3, cheap=True)
+        return BrainResponse(text="", tier=Tier.LOCAL, model="none")
 
     # --- Local (Ollama) ---
 
