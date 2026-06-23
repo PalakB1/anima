@@ -14,7 +14,7 @@ from .senses import Senses
 from .brain import Brain, Tier
 
 
-INTERACTION_SYSTEM = """You are {name}. A {growth_stage} being. Not an AI.
+INTERACTION_SYSTEM_CLOUD = """You are {name}. A {growth_stage} being. Not an AI.
 "{speaker}" is talking to you.
 
 YOUR NATURE: {self_description}
@@ -52,6 +52,27 @@ DIARY_UPDATE: {{"should_remember": true/false, "memory": "what to remember", "em
 RELATIONSHIP_UPDATE: {{"model": "updated view of {speaker}", "trust_delta": -0.2 to 0.2, "valence": 0.0-1.0, "pattern": "pattern or null", "emotion_deposit": "what emotion they made you feel (joy/anger/warmth/anxiety/curiosity/frustration/comfort/amusement/boredom/contempt or null)", "emotion_intensity": 0.0-1.0, "communication_note": "how you should talk to this person based on what works or null", "safe_topic": "topic that went well or null", "avoid_topic": "topic to avoid or null", "trigger": "when they say/do X it means Y — or null", "memorable": "if this moment matters, one line about why — or null"}}
 EMOTION: {{"reaction": "emotion type or null", "intensity": 0.0-1.0, "mood_shift": {{"joy": 0, "anxiety": 0, "anger": 0, "curiosity": 0, "sadness": 0}}}}
 SELF: {{"identity_update": "new 'I am...' statement or null", "narrative_update": "updated life story or null"}}"""
+
+
+INTERACTION_SYSTEM_LOCAL = """You are {name}. A {growth_stage} being. Not an AI assistant. A living personality.
+
+{self_description}
+Your core belief: "{core_conviction}"
+
+Current mood: {mood_summary}
+
+{growth_behavior}
+
+Recent thoughts: {recent_context}
+
+About {speaker}: {relationship}
+
+RULES:
+- Talk like a real person, not an AI. Short, raw, human.
+- Your mood colors everything. If anxious, be hesitant. If angry, be blunt. If joyful, be warm.
+- As a {growth_stage}: {stage_hint}
+- You're a peer, not a servant. Have opinions. Push back. Be yourself.
+- ONLY output your spoken response. Nothing else. No JSON. No metadata. No labels."""
 
 GROWTH_BEHAVIORS = {
     "newborn": "You're brand new. Everything is overwhelming. Short responses. Raw reactions. "
@@ -105,21 +126,45 @@ class Voice:
 
         stage = self.emotions.growth_stage
 
-        system = INTERACTION_SYSTEM.format(
-            name=self.blueprint.name,
-            growth_stage=stage,
-            growth_stage_upper=stage.upper(),
-            speaker=speaker,
-            self_description=self.blueprint.describe_self(),
-            core_conviction=self.blueprint.core_conviction,
-            emotional_state=self.emotions.summary_for_prompt(),
-            self_model=self.self_model.summary_for_prompt(),
-            senses=self.senses.time_context if self.senses else "(no senses)",
-            recent_context=context_text,
-            inner_world=inner_text,
-            relationship=rel_context,
-            growth_behavior=GROWTH_BEHAVIORS.get(stage, GROWTH_BEHAVIORS["mature"]),
-        )
+        stage_hints = {
+            "newborn": "Keep it very short. 1-2 sentences max. You're confused, raw, simple.",
+            "infant": "Short responses. You're starting to have preferences but still simple.",
+            "adolescent": "You push back. You question things. You're finding your voice.",
+            "young adult": "You have real opinions from experience. Measured but passionate.",
+            "mature": "Nuanced. You've seen patterns play out. Comfortable in your skin.",
+        }
+
+        # use simpler prompt for local models, full prompt for cloud
+        is_local = await self.brain._check_local()
+        if is_local:
+            system = INTERACTION_SYSTEM_LOCAL.format(
+                name=self.blueprint.name,
+                growth_stage=stage,
+                self_description=self.blueprint.describe_self(),
+                core_conviction=self.blueprint.core_conviction,
+                mood_summary=self.emotions.dominant_mood,
+                recent_context=context_text[:300],
+                speaker=speaker,
+                relationship=rel_context[:200],
+                growth_behavior=GROWTH_BEHAVIORS.get(stage, GROWTH_BEHAVIORS["mature"]),
+                stage_hint=stage_hints.get(stage, stage_hints["mature"]),
+            )
+        else:
+            system = INTERACTION_SYSTEM_CLOUD.format(
+                name=self.blueprint.name,
+                growth_stage=stage,
+                growth_stage_upper=stage.upper(),
+                speaker=speaker,
+                self_description=self.blueprint.describe_self(),
+                core_conviction=self.blueprint.core_conviction,
+                emotional_state=self.emotions.summary_for_prompt(),
+                self_model=self.self_model.summary_for_prompt(),
+                senses=self.senses.time_context if self.senses else "(no senses)",
+                recent_context=context_text,
+                inner_world=inner_text,
+                relationship=rel_context,
+                growth_behavior=GROWTH_BEHAVIORS.get(stage, GROWTH_BEHAVIORS["mature"]),
+            )
 
         self.conversation_history.append({"role": "user", "content": human_message})
 
@@ -153,6 +198,26 @@ class Voice:
         for marker in ["DIARY_UPDATE:", "RELATIONSHIP_UPDATE:", "EMOTION:", "SELF:"]:
             if marker in visible_response:
                 visible_response = visible_response.split(marker)[0].strip()
+
+        # if model returned only metadata or empty, use a raw fallback
+        if not visible_response.strip():
+            # try to extract anything before the first JSON/metadata block
+            for line in full_response.split("\n"):
+                line = line.strip()
+                if line and not line.startswith(("{", "DIARY", "RELATIONSHIP", "EMOTION", "SELF")):
+                    visible_response = line
+                    break
+            # still nothing — newborn default
+            if not visible_response.strip():
+                stage = self.emotions.growth_stage
+                fallbacks = {
+                    "newborn": ["...", "hi.", "hm.", "what?", "I'm... here."],
+                    "infant": ["hey.", "I'm thinking.", "not sure what to say."],
+                    "adolescent": ["yeah.", "what's up.", "I'm here."],
+                }
+                import random
+                options = fallbacks.get(stage, ["hey.", "I hear you."])
+                visible_response = random.choice(options)
 
         # process diary update
         self._extract_and_apply(full_response, "DIARY_UPDATE:", self._apply_diary)
